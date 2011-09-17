@@ -91,9 +91,11 @@ private:
 	Bit _sign;
 
 private:
-	void prepare_for_write(bool copy) {
-		if (_data->is_shared()) {
-			if (copy) {
+	void prepare_for_write(bool cow) {
+		if (!_data) {
+			_data = new SharedVec;
+		} else if (_data->is_shared()) {
+			if (cow) {
 				SharedVec* new_data = new SharedVec(*_data);
 				_data = new_data;
 			} else {
@@ -102,39 +104,46 @@ private:
 		}
 	}
 	
-	Vec& vec() { return _data->data; }
-	const Vec& vec() const { return _data->data; }
+	Vec& wvec(bool cow = true) { 
+		prepare_for_write(cow); 
+		return _data->data; 
+	}
+	const Vec& vec() const { 
+		static const Vec V;
+		return _data ? _data->data : V;
+	}
 	Index nwords() const { return vec().size(); }
 
 	const Word& get_word(Index word) const { 
 		static const Word Z = 0;
-		return word > nwords() ? Z : vec()[word];
+		return word < nwords() ? vec()[word] : Z;
 	}
 
 	void set_word(Index word, Word val) { 
 		if (val != 0) {
-			prepare_for_write(true);
-			if (word >= vec().size()) 
-				vec().resize(word+1, 0);
-			vec()[word] = val;
+			if (word >= nwords()) 
+				wvec().resize(word+1, 0);
+			wvec()[word] = val;
 			return;
 		}
 		// val == 0
-		if (word >= vec().size()) 
+		if (word >= nwords()) 
 			return;
-		prepare_for_write(true);
-		vec()[word] = 0; 
+		wvec()[word] = 0; 
 		// try truncating down the vec
-		if (word + 1 == vec().size()) {
+		if (word + 1 == nwords()) {
 			while (word > 0 && vec()[word-1] == 0) --word;
-			vec().resize(word);
+			wvec().resize(word);
 			if (word == 0) _sign = 0; // clear sign for zero
 		}
 	}
 
+	void push_front_word(Word val) {
+		wvec().push_front(val);
+	}
+
 	void clear() { 
-		prepare_for_write(false);
-		vec().clear(); 
+		wvec(false).clear(); // don't copy-on-write for clear
 		_sign = 0; 
 	}
 	
@@ -148,7 +157,6 @@ private:
 	template <class T> 
 	void init(T val) {
 		_sign = (val < 0);
-		_data = new SharedVec;
 		int i = 0;
 		DO((sizeof(val)+WORD_SIZE-1)/WORD_SIZE, set_word(i++,cut_word(val)));
 	}
@@ -156,10 +164,11 @@ private:
 	void init(const Int& num) {
 		_sign = num._sign;
 		_data = const_cast<SharedVec*>(num._data);
-		_data->add_share();
+		if (_data) _data->add_share();
 	}
 
 	void release() {
+		if (!_data) return;
 		if (_data->is_shared()) 
 			_data->remove_share(); 
 		else 
@@ -169,7 +178,7 @@ private:
 
 public:
 	// constructors
-	Int() : _data(new SharedVec) {}
+	Int() : _data(0) {}
 	Int(uint32_t val) { init(val); }
 	Int(uint64_t val) { init(val); }
 	Int(int32_t  val) { init(val); }
@@ -177,7 +186,7 @@ public:
 	Int(const Int& num) { init(num); }
 	~Int() { release(); }
 
-	const Int& operator=(const Int& num) { release(); init(num); return num; }
+	const Int& operator=(const Int& num) { if (this!=&num) { release(); init(num); } return num; }
 
 	bool is_zero() const	{ return vec().empty(); }
 	Bit get_sign() const	{ return _sign; }
@@ -203,18 +212,18 @@ public:
 
 	void lshift(Index n) { lshift(n,0); }
 	void lshift(Index n, Bit insert) {
-		while (n > 0) {
-			Index m = n < WORD_BITS ? n : WORD_BITS;
-			Word keep = insert ? (WORD_MASK >> (WORD_BITS-m)) : 0;
-			const Index len = nwords();
-			for (Index i = 0; i < len || keep != 0; ++i) {
-				Word x = get_word(i);
-				Word next_keep = x >> (WORD_BITS-m);
-				x = x << m | keep;
-				set_word(i, x);
-				keep = next_keep;
-			}
-			n -= m;
+		while (n > WORD_BITS) {
+			push_front_word(insert ? WORD_MASK : 0);
+			n-= WORD_BITS;
+		}
+		Word keep = insert ? (WORD_MASK >> (WORD_BITS-n)) : 0;
+		const Index len = nwords();
+		for (Index i = 0; i < len || keep != 0; ++i) {
+			Word x = get_word(i);
+			Word next_keep = x >> (WORD_BITS-n);
+			x = (x << n) | keep;
+			set_word(i, x);
+			keep = next_keep;
 		}
 	}
 	
@@ -356,7 +365,9 @@ public:
 				}
 			}
 			break;
-		case std::ios_base::oct:
+		case std::ios_base::oct: {
+			//int bits = 3 - (len*WORD_BITS) % 3;
+			//int oct = 0;
 			for (Index i = 0; i<len; ++i) {
 				const Word& x = num.get_word(len-1-i);
 				for (int k=WORD_BITS-BITS_IN_BYTE; k>=0; k-=BITS_IN_BYTE) {
@@ -367,6 +378,7 @@ public:
 				}
 			}
 			break;
+		}
 		default:
 			break;
 		}
