@@ -22,8 +22,9 @@
 		while (__n__ >= 8)  { DO8(X); __n__ -= 8; } \
 		while (__n__ >= 4)  { DO4(X); __n__ -= 4; } \
 		while (__n__ >= 2)  { DO2(X); __n__ -= 2; } \
-		while (__n__ >= 0)  { DO1(X); __n__ -= 1; } \
+		while (__n__ >= 1)  { DO1(X); __n__ -= 1; } \
 	} while(0)
+
 
 namespace bit_math {
 
@@ -73,7 +74,6 @@ public:
 	bool operator<=(const Bit& bit) const { return _val <= bit._val; }
 	bool operator>(const Bit& bit) const { return _val > bit._val; }
 	bool operator>=(const Bit& bit) const { return _val >= bit._val; }
-	
 	Bit operator!() const { return _val ? Bit(0) : Bit(1); }
 	int to_sign() const { return _val ? -1 : 1; }
 };
@@ -81,6 +81,7 @@ public:
 
 /*
  * Int represents an arbitrarily large integral value (signed)
+ * The template of WORD must be unsigned type but can be on any integral size (8bit - 64bit)
  */
 template <class WORD = unsigned char>
 class Int
@@ -153,6 +154,10 @@ private:
 
 	void push_front_word(Word val) {
 		wvec().push_front(val); // efficient
+	}
+
+	void pop_front_word() {
+		wvec().pop_front(); // efficient
 	}
 
 	void clear() { 
@@ -241,59 +246,76 @@ public:
 			push_front_word(val);
 			return;
 		}
-		Word keep = val & (WORD_MASK >> (WORD_BITS-n));
+		const Index nrev = WORD_BITS - n;
+		Word keep = val & (WORD_MASK >> nrev);
 		const Index len = nwords();
 		for (Index i = 0; i < len || keep != 0; ++i) {
 			const Word& x = get_word(i);
-			Word next_keep = x >> (WORD_BITS-n);
+			Word keep_next = x >> nrev;
 			set_word(i, (x << n) | keep);
-			keep = next_keep;
+			keep = keep_next;
 		}
 	}
 	
-	void rshift(Index n) {}
+	void rshift(Index n) {
+		while (n >= WORD_BITS) {
+			pop_front_word();
+			n-= WORD_BITS;
+		}
+		if (n <= 0) return;
+		const Index nrev = WORD_BITS - n;
+		const Word nmask = WORD_MASK >> nrev;
+		Word keep = 0;
+		const Index len = nwords();
+		for (Index i = 0; i < len; ++i) {
+			const Word& x = get_word(len-1-i);
+			Word keep_next = x & nmask;
+			set_word(i, (x >> n) | (keep << nrev));
+			keep = keep_next;
+		}
+	}
 	
 	void plus(const Int& num) {
-		/*
-		int keep = 0;
+		int loan = 0;
 		const Index len = num.nwords();
-		for (Index i = 0; i < len || keep != 0; ++i) {
+		for (Index i = 0; i < len || loan != 0; ++i) {
 			Word x = get_word(i);
 			Word y = num.get_word(i);
-			int next_keep = 0;
+			int loan_next = 0;
 			if (_sign && x > 0) {
 				x = (WORD_MASK - x) + 1;
-				--next_keep; // lend from next word
+				--loan_next; // lend from next word
 			}
 			if (num._sign && y > 0) {
 				y = (WORD_MASK - y) + 1;
-				next_keep -= _sign.to_sign(); // lend from next word
+				--loan_next; // lend from next word
 			}
 			Word z;
 			if (x > WORD_MASK - y) {
 				z = (x - (WORD_MASK - y)) - 1;
-				++next_keep; // overflow to next word
+				++loan_next; // overflow to next word
 			} else {
 				z = x + y;
 			}
-			if (keep > 0) {
-				if (z > WORD_MASK - keep) {
-					z = z - WORD_MASK + keep;
-					++next_keep;
+			loan *= _sign.to_sign(); // adjust loan to sign
+			assert(-1 <= loan && loan <= 1);
+			if (loan > 0) {
+				if (z >= WORD_MASK) {
+					z = z - WORD_MASK + 1;
+					++loan_next;
 				} else {
-					z += keep;
+					z += loan;
 				}
-			} else if (keep < 0) {
-				if (z < -keep) {
-					z = z - WORD_MASK + keep;
-					++next_keep;
+			} else if (loan < 0) {
+				if (z < -loan) {
+					z = z - WORD_MASK + loan;
+					++loan_next;
 				} else {
-					z += keep;
+					z += loan;
 				}
 			}
-			keep = next_keep;
+			loan = loan_next;
 		}
-		*/
 	}
 
 	void mult(const Int& num) {}
@@ -337,12 +359,9 @@ public:
 				int bits = 0;
 				Word word = 0;
 				for (; i < str.size(); ++i) {
-					int bin_val;
-					switch (str[i]) {
-						case '0': bin_val = 0;; break;
-						case '1': bin_val = 1; break;
-						default: return false;
-					}
+					if (str[i] < '0' || str[i] > '1')
+						return false;
+					int bin_val = str[i] - '0';
 					if (bits + 1 > WORD_BITS) {
 						lshift_word(bits, word);
 						bits = 0;
