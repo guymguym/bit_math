@@ -48,7 +48,7 @@ int main()
 				cout << endl; 
 				break; 
 			}
-			cout << "> ";
+			cout << "<msh> ";
 			std::string line;
 			std::getline(cin, line);
 			std::istringstream iss(line);
@@ -86,7 +86,7 @@ int main()
 			}
 
 			if (sym.empty()) {
-				cout << "<result> = " << result << endl;
+				cout << result << endl;
 			} else {
 				symbols[sym] = result;
 				cout << sym << " = " << result << endl;

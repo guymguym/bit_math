@@ -276,46 +276,44 @@ public:
 	}
 	
 	void plus(const Int& num) {
-		int loan = 0;
+		int carry = 0;
 		const Index len = num.nwords();
-		for (Index i = 0; i < len || loan != 0; ++i) {
+		int cs = (_sign==num._sign) ? 0 : (num._sign ? 1 : 2);
+		for (Index i = 0; i < len || carry != 0; ++i) {
+			assert(i <= len);
 			Word x = get_word(i);
 			Word y = num.get_word(i);
-			int loan_next = 0;
-			if (_sign && x > 0) {
-				x = (WORD_MASK - x) + 1;
-				--loan_next; // lend from next word
-			}
-			if (num._sign && y > 0) {
-				y = (WORD_MASK - y) + 1;
-				--loan_next; // lend from next word
-			}
 			Word z;
-			if (x > WORD_MASK - y) {
-				z = (x - (WORD_MASK - y)) - 1;
-				++loan_next; // overflow to next word
-			} else {
-				z = x + y;
+			switch (cs) {
+				case 0:
+					// on unsigned overflow - carry to next word
+					x += carry;
+					z = x + y;
+					carry = (z < x) ? 1 : 0;
+					break;
+				case 1:
+					// on unsigned underflow - carry to next word
+					x += carry;
+					z = x - y;
+					cout << endl << std::hex << "x=" << int(x) << " y=" << int(y) << " z=" << int(z) 
+						<< " carry=" << carry;
+					carry = (z > x) ? -1 : 0;
+					if (carry) {
+						z = ~z+1;
+						carry = (z==0) ? 1 : 0;
+					}
+					if (i==len) { toggle_sign(); }
+					break;
+				case 2:
+					y += carry;
+					z = y - x;
+					carry = (z > y) ? 1 : 0;
+					if (i==len) { toggle_sign(); }
+					break;
 			}
-			loan *= _sign.to_sign(); // adjust loan to sign
-			assert(-1 <= loan && loan <= 1);
-			if (loan > 0) {
-				if (z >= WORD_MASK) {
-					z = z - WORD_MASK + 1;
-					++loan_next;
-				} else {
-					z += loan;
-				}
-			} else if (loan < 0) {
-				if (z < -loan) {
-					z = z - WORD_MASK + loan;
-					++loan_next;
-				} else {
-					z += loan;
-				}
-			}
-			loan = loan_next;
+			set_word(i, z);
 		}
+		cout << endl << std::dec;
 	}
 
 	void mult(const Int& num) {}
@@ -436,6 +434,8 @@ public:
 		// speedy handling for zero - this is why we'll never get base specifiers for zero.
 		if (num.is_zero()) 
 			return os << '0';
+		if (num.get_sign())
+			os << '-';
 
 		std::ios_base::fmtflags base = os.flags() & std::ios_base::basefield;
 		const Index len = num.nwords();
