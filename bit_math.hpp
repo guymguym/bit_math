@@ -1,10 +1,15 @@
-#ifndef BITS__H__
-#define BITS__H__
+#ifndef BIT_MATH__H__
+#define BIT_MATH__H__
 
 #include <stdint.h>
 #include <cstdlib>
 #include <cstring>
+
 #include <deque>
+
+#include <iostream>
+#include <iomanip>
+#include <ios>
 
 #define DO1(X) do { X; } while(0)
 #define DO2(X) DO1(X); DO1(X)
@@ -64,10 +69,11 @@ public:
 	int to_sign() const { return _val ? -1 : 1; }
 };
 
+template <class WORD = unsigned char>
 class Int
 {
 private:
-	typedef unsigned char Word;
+	typedef WORD Word;
 	typedef uint32_t Index;
 	enum { 
 		BITS_IN_BYTE = 8u,
@@ -117,12 +123,12 @@ private:
 		if (word >= vec().size()) 
 			return;
 		prepare_for_write(true);
-		vec()[word] = val; 
+		vec()[word] = 0; 
 		// try truncating down the vec
 		if (word + 1 == vec().size()) {
-			while (vec()[word] == 0) 
-				--word;
-			vec().resize(word+1);
+			while (word > 0 && vec()[word-1] == 0) --word;
+			vec().resize(word);
+			if (word == 0) _sign = 0; // clear sign for zero
 		}
 	}
 
@@ -173,21 +179,11 @@ public:
 
 	const Int& operator=(const Int& num) { release(); init(num); return num; }
 
-	bool parse(std::string str) {
-		clear();
-		// TODO
-		int t = atoi(str.c_str());
-		set_word(0, t);
-		return true;
-	}
-	friend std::ostream& operator<<(std::ostream& os, const Int& num) {
-		return os << int(num.get_word(0)); // TODO
-	}
-
+	bool is_zero() const	{ return vec().empty(); }
 	Bit get_sign() const	{ return _sign; }
 	void set_sign(Bit sign) { _sign = sign; }
 	void toggle_sign()		{ _sign = !_sign; }
-	
+
 	Index bit_count() const { 
 		return nwords()*WORD_BITS; // TODO count exact bits in last word?
 	}
@@ -205,6 +201,25 @@ public:
 		set_word(word, val ? (w|pos) : (w&~pos));
 	}
 
+	void lshift(Index n) { lshift(n,0); }
+	void lshift(Index n, Bit insert) {
+		while (n > 0) {
+			Index m = n < WORD_BITS ? n : WORD_BITS;
+			Word keep = insert ? (WORD_MASK >> (WORD_BITS-m)) : 0;
+			const Index len = nwords();
+			for (Index i = 0; i < len || keep != 0; ++i) {
+				Word x = get_word(i);
+				Word next_keep = x >> (WORD_BITS-m);
+				x = x << m | keep;
+				set_word(i, x);
+				keep = next_keep;
+			}
+			n -= m;
+		}
+	}
+	
+	void rshift(Index n) {}
+	
 	void plus(const Int& num) {
 		int keep = 0;
 		const Index len = num.nwords();
@@ -245,12 +260,10 @@ public:
 			keep = next_keep;
 		}
 	}
+
 	void mult(const Int& num) {}
 	void div(const Int& num) {}
 	void mod(const Int& num) {}
-	void rshift(Index n) {}
-	void lshift(Index n) { lshift(n,0); }
-	void lshift(Index n, Bit insert) {}
 
 	Int operator-() const { Int i(*this); i.toggle_sign(); return i; }
 	Int operator+(const Int& num) const { Int i(*this); i.plus(num); return i; }
@@ -260,10 +273,110 @@ public:
 	Int operator%(const Int& num) const { Int i(*this); i.mod(num); return i; }
 	Int operator>>(int n) const { Int i(*this); i.rshift(n); return i; }
 	Int operator<<(int n) const { Int i(*this); i.lshift(n); return i; }
+	
+	
+	bool parse(std::string str) {
+		clear();
+		int base = 10;
+		size_t i = 0;
+		if (i < str.size() && str[i] == '-') {
+			_sign = 1;
+			++i;
+		}
+		if (i+1 < str.size() && str[i] == '0' && str[i+1] == 'b') {
+			base = 2;
+			i += 2;
+		} else if (i+1 < str.size() && str[i] == '0' && str[i+1] == 'x') {
+			base = 16;
+			i += 2;
+		} else if (i < str.size() && str[i] == '0') {
+			base = 8;
+			i += 1;
+		}
+
+		switch (base) {
+		case 2:
+			for (; i < str.size(); ++i) {
+				switch (str[i]) {
+				case '0': lshift(1, 0); break;
+				case '1': lshift(1, 1); break;
+				default: return false;
+				}
+			}
+			break;
+		case 8:
+			for (; i < str.size(); ++i) {
+				if (str[i] < '0' || str[i] > '7')
+					return false;
+				int oct = str[i] - '0';
+				for (int k=2; k>=0; --k)
+					lshift(1, (oct >> k) & 1);
+			}
+			break;
+		case 16:
+			for (; i < str.size(); ++i) {
+				int hex;
+				if (str[i] >= '0' && str[i] <= '9')
+					hex = str[i] - '0';
+				else if (str[i] >= 'a' && str[i] <= 'f')
+					hex = 10 + str[i] - 'a';
+				else if (str[i] >= 'A' && str[i] <= 'F')
+					hex = 10 + str[i] - 'A';
+				else
+					return false;
+				for (int k=3; k>=0; --k)
+					lshift(1, (hex >> k) & 1);
+			}
+			break;
+		case 10: // TODO parse base 10
+		default:
+			return false;
+		}
+		return true;
+	}
+
+	friend std::ostream& operator<<(std::ostream& os, const Int& num) {
+		if (num.is_zero()) 
+			return os << '0';
+		std::ios_base::fmtflags base = os.flags() & std::ios_base::basefield;
+		//std::cout << "base = " << base << std::endl;
+		const Index len = num.nwords();
+		switch (base) {
+		case std::ios_base::dec: // TODO decimal base
+		case std::ios_base::hex:
+			for (Index i = 0; i<len; ++i) {
+				const Word& x = num.get_word(len-1-i);
+				//std::cout << "i=" << i << " x=" << int(x) << std::endl;
+				for (int k=WORD_BITS-BITS_IN_BYTE; k>=0; k-=BITS_IN_BYTE) {
+					Word vh = (x >> (k+4)) & 0xF;
+					Word vl = (x >> k) & 0xF;
+					//std::cout << "k=" << k << " vh=" << int(vh) << " vl=" << int(vl) << std::endl;
+					os << char(vh<10 ? '0'+vh : 'a'+vh-10);
+					os << char(vl<10 ? '0'+vl : 'a'+vl-10);
+				}
+			}
+			break;
+		case std::ios_base::oct:
+			for (Index i = 0; i<len; ++i) {
+				const Word& x = num.get_word(len-1-i);
+				for (int k=WORD_BITS-BITS_IN_BYTE; k>=0; k-=BITS_IN_BYTE) {
+					Word vh = (x >> (k+6)) & 0x3;
+					Word vm = (x >> (k+3)) & 0x7;
+					Word vl = (x >> k) & 0x7;
+					os << char('0'+vh) << char('0'+vm) << char('0'+vl);
+				}
+			}
+			break;
+		default:
+			break;
+		}
+		return os;
+	}
+
 };
 
 
-}; // namespace BitMath
+}; // namespace bit_math
 
-#endif // BITS__H__
+#endif // BIT_MATH__H__
 

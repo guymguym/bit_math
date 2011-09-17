@@ -9,7 +9,7 @@ using std::cerr;
 using std::endl;
 
 #include "bit_math.hpp"
-using namespace bit_math;
+typedef bit_math::Int<> Int;
 
 typedef std::map<std::string, Int> Symbols;
 Symbols symbols;
@@ -44,6 +44,10 @@ int main()
 	while (true) {
 		std::deque<std::string> words;
 		{	// prompt and read words
+			if (cin.eof()) { 
+				cout << endl; 
+				break; 
+			}
 			cout << "> ";
 			std::string line;
 			std::getline(cin, line);
@@ -66,15 +70,20 @@ int main()
 				words.pop_front();
 			}
 
-			// for now only do plus:
-			if (words.size() != 3 || words[1] != "+") {
+			Int result;
+
+			if (words.size() == 1) {
+				if (!load_symbol_or_int(words[0], result)) continue;
+			} else if (words.size() == 3 && words[1] == "+") {
+				Int first, second;
+				if (!load_symbol_or_int(words[0], first)) continue;
+				if (!load_symbol_or_int(words[2], second)) continue;
+				result = first + second;
+			} else {
+				// for now only do plus:
 				cout << "ERROR: expected plus statement" << endl;
 				continue;
 			}
-			Int first, second;
-			if (!load_symbol_or_int(words[0], first)) continue;
-			if (!load_symbol_or_int(words[2], second)) continue;
-			Int result = first + second;
 
 			if (sym.empty()) {
 				cout << "<result> = " << result << endl;
