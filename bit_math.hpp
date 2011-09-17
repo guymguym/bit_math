@@ -27,6 +27,10 @@
 
 namespace bit_math {
 
+
+/*
+ * Simple mechanism for COW (copy-on-write) for shared data
+ */
 template <class T>
 class SharedData 
 {
@@ -45,6 +49,10 @@ public:
 	void remove_share() { --_shares; }
 };
 
+
+/*
+ * Wrapper class to represent a binary 'bit' and its native operations
+ */
 class Bit
 {
 private:
@@ -70,6 +78,10 @@ public:
 	int to_sign() const { return _val ? -1 : 1; }
 };
 
+
+/*
+ * Int represents an arbitrarily large integral value (signed)
+ */
 template <class WORD = unsigned char>
 class Int
 {
@@ -79,7 +91,7 @@ private:
 	enum { 
 		BITS_IN_BYTE = 8u,
 		WORD_SIZE = sizeof(Word), 
-		WORD_BITS = BITS_IN_BYTE * WORD_SIZE, 
+		WORD_BITS = BITS_IN_BYTE * WORD_SIZE
 	};
 	enum {
 		WORD_ONE = Word(1u),
@@ -127,20 +139,20 @@ private:
 			wvec()[word] = val;
 			return;
 		}
-		// val == 0
+		// val == 0, no need to resize up for it
 		if (word >= nwords()) 
 			return;
 		wvec()[word] = 0; 
-		// try truncating down the vec
+		// try truncating down the vec by coalescing zeros as much as possible
 		if (word + 1 == nwords()) {
 			while (word > 0 && vec()[word-1] == 0) --word;
 			wvec().resize(word);
-			if (word == 0) _sign = 0; // clear sign for zero
+			if (word == 0) _sign = 0; // clear sign for zero as well to avoid effects laterz
 		}
 	}
 
 	void push_front_word(Word val) {
-		wvec().push_front(val);
+		wvec().push_front(val); // efficient
 	}
 
 	void clear() { 
@@ -184,10 +196,16 @@ public:
 	Int(uint64_t val) { init(val); }
 	Int(int32_t  val) { init(val); }
 	Int(int64_t  val) { init(val); }
-	Int(const Int& num) { init(num); }
+	Int(const Int& num) { init(num); } // copy-ctor
 	~Int() { release(); }
 
-	const Int& operator=(const Int& num) { if (this!=&num) { release(); init(num); } return num; }
+	const Int& operator=(const Int& num) { 
+		if (this != &num) { 
+			release(); 
+			init(num); 
+		} 
+		return num; 
+	}
 
 	bool is_zero() const	{ return vec().empty(); }
 	Bit get_sign() const	{ return _sign; }
@@ -226,10 +244,9 @@ public:
 		Word keep = val & (WORD_MASK >> (WORD_BITS-n));
 		const Index len = nwords();
 		for (Index i = 0; i < len || keep != 0; ++i) {
-			Word x = get_word(i);
+			const Word& x = get_word(i);
 			Word next_keep = x >> (WORD_BITS-n);
-			x = (x << n) | keep;
-			set_word(i, x);
+			set_word(i, (x << n) | keep);
 			keep = next_keep;
 		}
 	}
@@ -237,6 +254,7 @@ public:
 	void rshift(Index n) {}
 	
 	void plus(const Int& num) {
+		/*
 		int keep = 0;
 		const Index len = num.nwords();
 		for (Index i = 0; i < len || keep != 0; ++i) {
@@ -275,6 +293,7 @@ public:
 			}
 			keep = next_keep;
 		}
+		*/
 	}
 
 	void mult(const Int& num) {}
@@ -295,10 +314,12 @@ public:
 		clear();
 		int base = 10;
 		size_t i = 0;
+		// check for minus sign
 		if (i < str.size() && str[i] == '-') {
 			_sign = 1;
 			++i;
 		}
+		// check the base
 		if (i+1 < str.size() && str[i] == '0' && str[i+1] == 'b') {
 			base = 2;
 			i += 2;
@@ -393,8 +414,10 @@ public:
 	}
 
 	friend std::ostream& operator<<(std::ostream& os, const Int& num) {
+		// speedy handling for zero - this is why we'll never get base specifiers for zero.
 		if (num.is_zero()) 
 			return os << '0';
+
 		std::ios_base::fmtflags base = os.flags() & std::ios_base::basefield;
 		const Index len = num.nwords();
 
@@ -441,7 +464,7 @@ public:
 };
 
 
-}; // namespace bit_math
+} // namespace bit_math
 
 #endif // BIT_MATH__H__
 
