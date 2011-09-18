@@ -274,44 +274,59 @@ public:
 			keep = keep_next;
 		}
 	}
-	
-	void plus(const Int& num) {
+
+	// return true if this>=num disregarding signs (absolute values)
+	bool greater_equal_abs(const Int& num)
+	{
 		const Index mylen = nwords();
 		const Index len = num.nwords();
-		if (len == 0) return;
-		int cs = (_sign==num._sign) ? 0 : 1;
-		if (cs && (mylen < len || ( mylen==len && get_word(len-1) < num.get_word(len-1) ))) {
-			cs = 2;
+		if (mylen < len) return false;
+		if (mylen > len) return true;
+		for (Index i = 0; i<len; ++i) {
+			const Word& x = get_word(len-1-i);
+			const Word& y = num.get_word(len-1-i);
+			if (x == y) continue;
+			return x > y;
 		}
-		cout << "plus: cs=" << cs << " this=" << *this << " num=" << num << endl << std::hex;
+		return true;
+	}
+
+	void plus(const Int& num) {
+		const Int* first = this;
+		const Int* second = &num;
+		Index mylen = nwords();
+		Index len = second->nwords();
+		int sgn = (_sign==num._sign) ? 0 : 1;
+		if (sgn && !greater_equal_abs(num)) {
+			// in different sign mode, we may swap pointers to make abs(first)>=abs(second)
+			// this is an essential part of the computation below.
+			// an alternative is to postpone to the end, and if still carry!=0, run back and ~ every word.
+			std::swap(first, second);
+		}
+		cout << "plus: sgn=" << sgn << " first=" << *first << " second=" << *second << endl << std::hex;
 		Word carry = 0;
 		for (Index i = 0; i < len || carry != 0; ++i) {
-			assert(i <= len);
-			Word x = get_word(i);
-			Word y = num.get_word(i);
+			assert(i<=mylen || i<=len);
+			Word x = first->get_word(i);
+			Word y = second->get_word(i);
 			cout << "plus: " << i << " x=" << int(x) << " y=" << int(y) << " carry=" << int(carry);
 			Word t, z;
-			switch (cs) {
+			switch (sgn) {
 				case 0: // x + y
 					t = x + carry;
 					z = t + y;
 					carry = (t<x || z<t) ? 1 : 0;
 					break;
-				case 1: // x - y and this>=num
+				case 1: // x - y
 					t = x - carry;
 					z = t - y;
 					carry = (t>x || z>t) ? 1 : 0;
-					break;
-				case 2: // x - y and this<num
-					t = y - carry;
-					z = t - x;
-					carry = (t>y || z>t) ? 1 : 0;
 					break;
 			}
 			cout << " z=" << int(z) << endl;
 			set_word(i, z);
 		}
-		if (cs == 2) toggle_sign();
+		if (first != this) toggle_sign();
 		cout << std::dec;
 	}
 

@@ -72,11 +72,9 @@ process(const std::deque<std::string>& words)
 		return false;
 	}
 
-	if (sym.empty()) {
-		cout << result << endl;
-	} else {
+	cout << result << endl;
+	if (!sym.empty()) {
 		symbols[sym] = result;
-		cout << sym << " = " << result << endl;
 	}
 	return true;
 }
@@ -85,11 +83,19 @@ process(const std::deque<std::string>& words)
 int 
 main(int ac, char** av)
 {
-	if (ac > 1) {
-		std::deque<std::string> words;
-		for (int i=1; i<ac; ++i)
-			words.push_back(std::string(av[i]));
-		process(words);
+	bool pipe_mode = false;
+	std::deque<std::string> args;
+	for (int i=1; i<ac; ++i) {
+		std::string arg(av[i]);
+		if (arg == "--pipe") {
+			pipe_mode = true;
+			continue;
+		}
+		args.push_back(arg);
+	}
+
+	if (!args.empty()) {
+		process(args);
 		return 0;
 	}
 	while (true) {
@@ -100,6 +106,10 @@ main(int ac, char** av)
 				break; 
 			}
 			cout << "<msh> ";
+			if (pipe_mode)
+				cout << endl;
+			else
+				cout.flush();
 			std::string line;
 			std::getline(cin, line);
 			std::istringstream iss(line);
