@@ -276,7 +276,6 @@ public:
 	}
 	
 	void plus(const Int& num) {
-		Word carry = 0;
 		const Index mylen = nwords();
 		const Index len = num.nwords();
 		if (len == 0) return;
@@ -284,36 +283,36 @@ public:
 		if (cs && (mylen < len || ( mylen==len && get_word(len-1) < num.get_word(len-1) ))) {
 			cs = 2;
 		}
-		cout << endl << "len=" << len << " cs=" << cs << " this=" << *this << " num=" << num;
+		cout << "plus: cs=" << cs << " this=" << *this << " num=" << num << endl << std::hex;
+		Word carry = 0;
 		for (Index i = 0; i < len || carry != 0; ++i) {
 			assert(i <= len);
 			Word x = get_word(i);
 			Word y = num.get_word(i);
-			cout << endl << std::hex << "x=" << int(x) << " y=" << int(y) << " carry=" << int(carry);
-			Word z;
+			cout << "plus: " << i << " x=" << int(x) << " y=" << int(y) << " carry=" << int(carry);
+			Word t, z;
 			switch (cs) {
 				case 0: // x + y
-					x += carry;
-					z = x + y;
-					// carry on unsigned overflow
-					carry = (z < x) ? 1 : 0;
+					t = x + carry;
+					z = t + y;
+					carry = (t<x || z<t) ? 1 : 0;
 					break;
 				case 1: // x - y and this>=num
-					x -= carry;
-					z = x - y;
-					carry = (z > x) ? 1 : 0;
+					t = x - carry;
+					z = t - y;
+					carry = (t>x || z>t) ? 1 : 0;
 					break;
 				case 2: // x - y and this<num
-					y -= carry;
-					z = y - x;
-					carry = (z > y) ? 1 : 0;
+					t = y - carry;
+					z = t - x;
+					carry = (t>y || z>t) ? 1 : 0;
 					break;
 			}
-			cout << " z=" << int(z);
+			cout << " z=" << int(z) << endl;
 			set_word(i, z);
 		}
 		if (cs == 2) toggle_sign();
-		cout << endl << std::dec;
+		cout << std::dec;
 	}
 
 	void mult(const Int& num) {}

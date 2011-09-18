@@ -38,9 +38,60 @@ load_symbol_or_int(std::string arg, Int& num)
 	return true;
 }
 
-
-int main()
+bool 
+process(const std::deque<std::string>& words)
 {
+	if (words.empty()) return true;
+	if (words.size() == 1) {
+		if (!symbol_exist(words[0])) return false;
+		cout << words[0] << " = " << symbols[words[0]] << endl;
+		return true;
+	}
+	if (words.size() == 2) {
+		cout << "ERROR: expected more than 2 words in statement" << endl;
+		return false;
+	}
+	
+	size_t i = 0;
+	std::string sym;
+	if (words[1] == "=") {
+		sym = words[0];
+		i += 2;
+	}
+	Int result;
+	if (i+1 == words.size()) {
+		if (!load_symbol_or_int(words[i], result)) return false;
+	} else if (i+3 == words.size() && words[i+1] == "+") {
+		Int first, second;
+		if (!load_symbol_or_int(words[i], first)) return false;
+		if (!load_symbol_or_int(words[i+2], second)) return false;
+		result = first + second;
+	} else {
+		// for now only do plus:
+		cout << "ERROR: expected plus statement" << endl;
+		return false;
+	}
+
+	if (sym.empty()) {
+		cout << result << endl;
+	} else {
+		symbols[sym] = result;
+		cout << sym << " = " << result << endl;
+	}
+	return true;
+}
+
+
+int 
+main(int ac, char** av)
+{
+	if (ac > 1) {
+		std::deque<std::string> words;
+		for (int i=1; i<ac; ++i)
+			words.push_back(std::string(av[i]));
+		process(words);
+		return 0;
+	}
 	while (true) {
 		std::deque<std::string> words;
 		{	// prompt and read words
@@ -57,41 +108,7 @@ int main()
 				words.push_back(word);
 			}
 		}
-		if (words.empty()) {
-			continue;
-		} else if (words.size() == 1) {
-			if (!symbol_exist(words[0])) continue;
-			cout << words[0] << " = " << symbols[words[0]] << endl;
-		} else if (words.size() > 2) {
-			std::string sym;
-			if (words[1] == "=") {
-				sym = words[0];
-				words.pop_front();
-				words.pop_front();
-			}
-
-			Int result;
-
-			if (words.size() == 1) {
-				if (!load_symbol_or_int(words[0], result)) continue;
-			} else if (words.size() == 3 && words[1] == "+") {
-				Int first, second;
-				if (!load_symbol_or_int(words[0], first)) continue;
-				if (!load_symbol_or_int(words[2], second)) continue;
-				result = first + second;
-			} else {
-				// for now only do plus:
-				cout << "ERROR: expected plus statement" << endl;
-				continue;
-			}
-
-			if (sym.empty()) {
-				cout << result << endl;
-			} else {
-				symbols[sym] = result;
-				cout << sym << " = " << result << endl;
-			}
-		}
+		process(words);
 	}
 	return 0;
 }
