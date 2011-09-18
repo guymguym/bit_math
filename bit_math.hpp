@@ -5,13 +5,24 @@
 #include <assert.h>
 #include <cstdlib>
 #include <cstring>
-
 #include <deque>
-
 #include <iostream>
 #include <iomanip>
 #include <ios>
 
+
+
+namespace bit_math {
+
+
+
+// debug macro - to be defined externally if needed
+#ifndef BIT_MATH_DBG
+# define BIT_MATH_DBG(x)
+# define BIT_MATH_DBG_DEFINED_EMPTY
+#endif
+
+// repeating macro for fast expansion
 #define DO1(X) do { X; } while(0)
 #define DO2(X) DO1(X); DO1(X)
 #define DO4(X) DO2(X); DO2(X)
@@ -25,8 +36,6 @@
 		while (__n__ >= 1)  { DO1(X); __n__ -= 1; } \
 	} while(0)
 
-
-namespace bit_math {
 
 
 /*
@@ -43,12 +52,13 @@ public:
 		: _shares(0) {}
 	SharedData(SharedData& other) 
 		: _shares(0)
-		, data(other.data) 
+		, data(other.data) // !! calling copy-ctor !!
 		{ other.remove_share(); }
 	bool is_shared() { return _shares > 0; }
 	void add_share() { ++_shares; }
 	void remove_share() { --_shares; }
 };
+
 
 
 /*
@@ -79,6 +89,7 @@ public:
 };
 
 
+
 /*
  * Int represents an arbitrarily large integral value (signed)
  * The template of WORD must be unsigned type but can be on any integral size (8bit - 64bit)
@@ -86,25 +97,31 @@ public:
 template <class WORD = unsigned char>
 class Int
 {
-private:
+
+private: /* Definitions */
+
 	typedef WORD Word;
 	typedef uint32_t Index;
 	enum { 
-		BITS_IN_BYTE = 8u,
-		WORD_SIZE = sizeof(Word), 
-		WORD_BITS = BITS_IN_BYTE * WORD_SIZE
+		BITS_IN_BYTE	= 8u,
+		WORD_SIZE		= sizeof(Word), 
+		WORD_BITS		= BITS_IN_BYTE * WORD_SIZE
 	};
 	enum {
-		WORD_ONE = Word(1u),
-		WORD_MASK = Word(-1u)
+		WORD_ONE		=  Word(1),
+		WORD_MASK		= ~Word(1)
 	};
 	// using deque instead of vector to avoid large memory allocations
 	typedef std::deque<Word> Vec;
 	typedef SharedData<Vec> SharedVec;
+
+private: /* Members */
+
 	SharedVec* _data;
 	Bit _sign;
 
-private:
+private: /* Internal functions */
+
 	void prepare_for_write(bool cow) {
 		if (!_data) {
 			_data = new SharedVec;
@@ -122,10 +139,12 @@ private:
 		prepare_for_write(cow); 
 		return _data->data; 
 	}
+
 	const Vec& vec() const { 
 		static const Vec V;
 		return _data ? _data->data : V;
 	}
+
 	Index nwords() const { return vec().size(); }
 
 	const Word& get_word(Index word) const { 
@@ -153,11 +172,11 @@ private:
 	}
 
 	void push_front_word(Word val) {
-		wvec().push_front(val); // efficient
+		wvec().push_front(val); // efficient for deque
 	}
 
 	void pop_front_word() {
-		wvec().pop_front(); // efficient
+		wvec().pop_front(); // efficient for deque
 	}
 
 	void clear() { 
@@ -195,7 +214,9 @@ private:
 	}
 
 public:
-	// constructors
+
+	/* Constructors, destructor, and assignment */
+
 	Int() : _data(0) {}
 	Int(uint32_t val) { init(val); }
 	Int(uint64_t val) { init(val); }
@@ -212,10 +233,16 @@ public:
 		return num; 
 	}
 
+
+	/* Sign functions */
+
 	bool is_zero() const	{ return vec().empty(); }
 	Bit get_sign() const	{ return _sign; }
 	void set_sign(Bit sign) { _sign = sign; }
 	void toggle_sign()		{ _sign = !_sign; }
+
+
+	/* Bit functions */
 
 	Bit get_bit(Index bit) const {
 		const Index word = bit / WORD_BITS;
@@ -223,6 +250,7 @@ public:
 		const Word& w = get_word(word);
 		return w & pos;
 	}
+
 	void set_bit(Index bit, Bit val) {
 		const Index word = bit / WORD_BITS;
 		const Word pos = WORD_ONE << (bit % WORD_BITS);
@@ -231,6 +259,7 @@ public:
 	}
 
 	void lshift(Index n) { lshift(n,0); }
+
 	void lshift(Index n, Bit insert) {
 		while (n >= WORD_BITS) {
 			push_front_word(insert ? WORD_MASK : 0);
@@ -238,6 +267,7 @@ public:
 		}
 		lshift_word(n, WORD_MASK);
 	}
+
 	void lshift_word(Index n, Word val) {
 		assert(n <= WORD_BITS);
 		if (n <= 0) 
@@ -275,9 +305,11 @@ public:
 		}
 	}
 
+
+	/* Logical functions */
+
 	// return true if this>=num disregarding signs (absolute values)
-	bool greater_equal_abs(const Int& num)
-	{
+	bool greater_equal_abs(const Int& num) const {
 		const Index mylen = nwords();
 		const Index len = num.nwords();
 		if (mylen < len) return false;
@@ -290,60 +322,97 @@ public:
 		}
 		return true;
 	}
+	
+	int compare(const Int& num) const {
+		// TODO implement compare(Int)
+		return 0;
+	}
 
-	void plus(const Int& num) {
-		const Int* first = this;
-		const Int* second = &num;
-		Index mylen = nwords();
-		Index len = second->nwords();
-		int sgn = (_sign==num._sign) ? 0 : 1;
-		if (sgn && !greater_equal_abs(num)) {
-			// in different sign mode, we may swap pointers to make abs(first)>=abs(second)
-			// this is an essential part of the computation below.
+
+	/* Arithmetic functions */
+
+	void plus(const Int& a, const Int& b) {
+		clear();
+		const Int* first = &a;
+		const Int* second = &b;
+		const Index alen = a.nwords();
+		const Index blen = b.nwords();
+		const bool sgn = (a.get_sign() != b.get_sign());
+		if (sgn && !a.greater_equal_abs(b)) {
+			// in different sign mode, we swap pointers to make abs(first) >= abs(second)
+			// this is essential to the computation below.
 			// an alternative is to postpone to the end, and if still carry!=0, run back and ~ every word.
 			std::swap(first, second);
 		}
-		cout << "plus: sgn=" << sgn << " first=" << *first << " second=" << *second << endl << std::hex;
+		BIT_MATH_DBG("plus: sgn=" << sgn << " first=" << *first << " second=" << *second);
 		Word carry = 0;
-		for (Index i = 0; i < len || carry != 0; ++i) {
-			assert(i<=mylen || i<=len);
-			Word x = first->get_word(i);
-			Word y = second->get_word(i);
-			cout << "plus: " << i << " x=" << int(x) << " y=" << int(y) << " carry=" << int(carry);
+		for (Index i=0; i<alen || i<blen || carry!=0; ++i) {
+			assert(i<=alen || i<=blen);
+			const Word& x = first->get_word(i);
+			const Word& y = second->get_word(i);
+			BIT_MATH_DBG("plus: " << i << std::hex << " x=" << int(x) << " y=" << int(y) << " carry=" << int(carry));
 			Word t, z;
 			switch (sgn) {
-				case 0: // x + y
+				case false: // x + y
 					t = x + carry;
 					z = t + y;
 					carry = (t<x || z<t) ? 1 : 0;
 					break;
-				case 1: // x - y
+				case true: // x - y
 					t = x - carry;
 					z = t - y;
 					carry = (t>x || z>t) ? 1 : 0;
 					break;
 			}
-			cout << " z=" << int(z) << endl;
+			BIT_MATH_DBG("plus: z=" << std::hex << int(z));
 			set_word(i, z);
 		}
-		if (first != this) toggle_sign();
-		cout << std::dec;
+		set_sign(a.get_sign());
+		if (first != &a) toggle_sign();
 	}
 
-	void mult(const Int& num) {}
-	void div(const Int& num) {}
-	void mod(const Int& num) {}
+	void mult(const Int& a, const Int& b) {}
+	void div(const Int& a, const Int& b) {}
+	void mod(const Int& a, const Int& b) {}
 
-	Int operator-() const { Int i(*this); i.toggle_sign(); return i; }
-	Int operator+(const Int& num) const { Int i(*this); i.plus(num); return i; }
-	Int operator-(const Int& num) const { Int i(*this); i.plus(-num); return i; }
-	Int operator*(const Int& num) const { Int i(*this); i.mult(num); return i; }
-	Int operator/(const Int& num) const { Int i(*this); i.div(num); return i; }
-	Int operator%(const Int& num) const { Int i(*this); i.mod(num); return i; }
+
+	/* Bitwise operators */
+
 	Int operator>>(int n) const { Int i(*this); i.rshift(n); return i; }
 	Int operator<<(int n) const { Int i(*this); i.lshift(n); return i; }
+	void operator>>=(int n) const { rshift(n); }
+	void operator<<=(int n) const { lshift(n); }
+
+
+	/* Logical operators */
+
+	bool operator<(const Int& num) { return compare(num) < 0; }
+	bool operator>(const Int& num) { return compare(num) > 0; }
+	bool operator<=(const Int& num) { return compare(num) <= 0; }
+	bool operator>=(const Int& num) { return compare(num) >= 0; }
+	bool operator==(const Int& num) { return compare(num) == 0; }
+	bool operator!=(const Int& num) { return compare(num) != 0; }
 	
-	
+
+	/* Arithmetic operators */
+
+	Int operator-() const { Int i(*this); i.toggle_sign(); return i; }
+	Int operator+(const Int& num) const { Int i; i.plus(*this, num); return i; }
+	Int operator-(const Int& num) const { Int i; i.plus(*this, -num); return i; }
+	Int operator*(const Int& num) const { Int i; i.mult(*this, num); return i; }
+	Int operator/(const Int& num) const { Int i; i.div(*this, num); return i; }
+	Int operator%(const Int& num) const { Int i; i.mod(*this, num); return i; }
+		// TODO not sure if plus works ok if this == &arg
+	void operator+=(const Int& num) const { plus(*this, num); } 
+	void operator-=(const Int& num) const { plus(*this, -num); }
+	void operator*=(const Int& num) const { Int i; i.mult(*this, num); *this = i; } 
+	void operator/=(const Int& num) const { Int i; i.div(*this, num); *this = i; } 
+	void operator%=(const Int& num) const { Int i; i.mod(*this, num); *this = i; } 
+
+
+
+	/* Parsing and printing - maybe extract from here */
+
 	bool parse(const std::string& str) {
 		clear();
 		int base = 10;
@@ -499,7 +568,16 @@ public:
 };
 
 
+
 } // namespace bit_math
+
+
+
+#ifdef BIT_MATH_DBG_DEFINED_EMPTY
+# undef BIT_MATH_DBG
+# undef BIT_MATH_DBG_DEFINED_EMPTY
+#endif
+
 
 #endif // BIT_MATH__H__
 
