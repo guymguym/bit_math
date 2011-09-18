@@ -276,43 +276,43 @@ public:
 	}
 	
 	void plus(const Int& num) {
-		int carry = 0;
+		Word carry = 0;
+		const Index mylen = nwords();
 		const Index len = num.nwords();
-		int cs = (_sign==num._sign) ? 0 : (num._sign ? 1 : 2);
+		if (len == 0) return;
+		int cs = (_sign==num._sign) ? 0 : 1;
+		if (cs && (mylen < len || ( mylen==len && get_word(len-1) < num.get_word(len-1) ))) {
+			cs = 2;
+		}
+		cout << endl << "len=" << len << " cs=" << cs << " this=" << *this << " num=" << num;
 		for (Index i = 0; i < len || carry != 0; ++i) {
 			assert(i <= len);
 			Word x = get_word(i);
 			Word y = num.get_word(i);
+			cout << endl << std::hex << "x=" << int(x) << " y=" << int(y) << " carry=" << int(carry);
 			Word z;
 			switch (cs) {
-				case 0:
-					// on unsigned overflow - carry to next word
+				case 0: // x + y
 					x += carry;
 					z = x + y;
+					// carry on unsigned overflow
 					carry = (z < x) ? 1 : 0;
 					break;
-				case 1:
-					// on unsigned underflow - carry to next word
-					x += carry;
+				case 1: // x - y and this>=num
+					x -= carry;
 					z = x - y;
-					cout << endl << std::hex << "x=" << int(x) << " y=" << int(y) << " z=" << int(z) 
-						<< " carry=" << carry;
-					carry = (z > x) ? -1 : 0;
-					if (carry) {
-						z = ~z+1;
-						carry = (z==0) ? 1 : 0;
-					}
-					if (i==len) { toggle_sign(); }
+					carry = (z > x) ? 1 : 0;
 					break;
-				case 2:
-					y += carry;
+				case 2: // x - y and this<num
+					y -= carry;
 					z = y - x;
 					carry = (z > y) ? 1 : 0;
-					if (i==len) { toggle_sign(); }
 					break;
 			}
+			cout << " z=" << int(z);
 			set_word(i, z);
 		}
+		if (cs == 2) toggle_sign();
 		cout << endl << std::dec;
 	}
 
@@ -333,10 +333,11 @@ public:
 	bool parse(const std::string& str) {
 		clear();
 		int base = 10;
+		Bit sign = 0;
 		size_t i = 0;
 		// check for minus sign
 		if (i < str.size() && str[i] == '-') {
-			_sign = 1;
+			sign = 1; // keep sign for later to avoid set_word from zeroing it
 			++i;
 		}
 		// check the base
@@ -427,6 +428,7 @@ public:
 				return false;
 		}
 
+		set_sign(sign);
 		return true;
 	}
 
