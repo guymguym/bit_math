@@ -402,9 +402,8 @@ public:
 	Int operator*(const Int& num) const { Int i; i.mult(*this, num); return i; }
 	Int operator/(const Int& num) const { Int i; i.div(*this, num); return i; }
 	Int operator%(const Int& num) const { Int i; i.mod(*this, num); return i; }
-		// TODO not sure if plus works ok if this == &arg
-	void operator+=(const Int& num) const { plus(*this, num); } 
-	void operator-=(const Int& num) const { plus(*this, -num); }
+	void operator+=(const Int& num) const { Int i; i.plus(*this, num); *this = i; } 
+	void operator-=(const Int& num) const { Int i; i.plus(*this, -num); *this = i; }
 	void operator*=(const Int& num) const { Int i; i.mult(*this, num); *this = i; } 
 	void operator/=(const Int& num) const { Int i; i.div(*this, num); *this = i; } 
 	void operator%=(const Int& num) const { Int i; i.mod(*this, num); *this = i; } 
