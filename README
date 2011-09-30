@@ -1,0 +1,10 @@
+The bit_math project is an attempt to provide a library to manipulate 
+arbitrarily large integers and perform calculations efficiently.
+Its next step would be to introduce rational numbers, and then also series and sums.
+
+My vision is to make a framework in which you could represent
+irrational numbers (by infinite sums such as for e^x = sum_over_n(x^n/n!))
+and efficiently generate it to any required percision.
+
+Feedbacks are very wellcome.
+Guy
